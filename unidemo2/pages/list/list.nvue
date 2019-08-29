@@ -1,0 +1,398 @@
+<template>
+	<view class="base-view">
+		<map class="map-view" :latitude="latitude" :longitude="longitude" :markers="covers" scale="18">
+			<cover-view class="cover-view-01 flex-direction-colum">
+				<!-- 查询栏 -->
+				<view class="search-view flex-direction-row">
+					<input class="search-input" placeholder-style="color:#555555" placeholder="查找地点,路线" />
+					<button class="seach-btn" type="primary">搜索</button>
+				</view>
+
+				<view class="tool-view flex-direction-row">
+					<!-- 左侧初始按钮 -->
+					<view class="left-tool-view flex-direction-colum">
+						<view class="tool-border-view" @click="toolClick">
+							<image class="tool-img" src="../../static/tool.jpg"></image>
+							<text class="tool-text">工具</text>
+						</view>
+						<view class="tool-border-view" @click="test">
+							<image class="tool-img" src="../../static/around.jpg"></image>
+							<text class="tool-text">周边</text>
+						</view>
+					</view>
+
+
+					<!-- 工具栏展开界面-->
+					<view class="tool-extend-view  flex-direction-colum" v-show="toolvisible">
+						<view class=" flex-direction-row">
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">测量距离</text>
+							</view> 
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">测量面积</text>
+							</view>
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">拾取坐标</text>
+							</view>
+						</view>
+						<view class=" flex-direction-row">
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">绘线</text>
+							</view>
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">绘面</text>
+							</view>
+							<view class="tool-extend-border">
+								<image class="tool-extend-img" src="../../static/locate.png"></image>
+								<text class="tool-text">清除</text>
+							</view>
+						</view>
+					</view>
+
+					<!-- 右侧初始按钮 -->
+					<view class="right-tool-view flex-direction-colum">
+						<view class="tool-border-view">
+							<image class="tool-img" src="../../static/layer.png"></image>
+							<text class="tool-text">图层</text>
+						</view>
+						<view class="tool-border-view">
+							<image class="tool-img" src="../../static/locate.png"></image>
+							<text class="tool-text">定位</text>
+						</view>
+					</view>
+				</view>
+
+			</cover-view>
+		</map>
+	</view>
+</template>
+<script>
+	import {
+		friendlyDate
+	} from '@/common/util.js';
+
+	import mediaItem from './list-item.nvue';
+
+	// 缓存每页最多
+	const MAX_CACHE_DATA = 100;
+	// 缓存页签数量
+	const MAX_CACHE_PAGE = 3;
+
+	export default {
+		components: {
+			mediaItem
+		},
+		data() {
+			return {
+				toolvisible: false,
+				latitude: 39.909,
+				longitude: 116.39742,
+				newsList: [],
+				cacheTab: [],
+				tabIndex: 0,
+				covers: [{
+					latitude: 39.9085,
+					longitude: 116.39747,
+					// #ifdef APP-PLUS
+					iconPath: '../../../static/app-plus/location@3x.png',
+					// #endif
+					// #ifndef APP-PLUS
+					iconPath: '../../../static/location.png',
+					// #endif
+				}, {
+					latitude: 39.90,
+					longitude: 116.39,
+					// #ifdef APP-PLUS
+					iconPath: '../../../static/app-plus/location@3x.png',
+					// #endif
+					// #ifndef APP-PLUS
+					iconPath: '../../../static/location.png',
+					// #endif
+				}]
+			}
+		},
+		onLoad() {
+			this.tabBars.forEach((tabBar) => {
+				this.newsList.push({
+					data: [],
+					refreshing: false,
+					refreshFlag: false,
+					refreshText: "",
+					requestParams: {
+						columnId: tabBar.newsid,
+						minId: 0,
+						pageSize: 10,
+						column: 'id,post_id,title,author_name,cover,published_at,comments_count'
+					},
+					loadingText: '加载中...'
+				});
+			});
+			this.getList(0);
+		},
+		methods: {
+
+			getList(index, action = 1) {
+				let activeTab = this.newsList[index];
+				activeTab.requestParams.time = new Date().getTime() + '';
+				if (action === 1) {
+					activeTab.requestParams.minId = 0;
+				}
+				uni.request({
+					url: 'https://unidemo.dcloud.net.cn/api/news',
+					data: activeTab.requestParams,
+					success: (result) => {
+						if (result.statusCode !== 200) {
+							return;
+						}
+						const data = result.data.map((news) => {
+							return {
+								id: this.newGuid() + news.id,
+								newsid: news.id,
+								article_type: 1,
+								datetime: friendlyDate(new Date(news.published_at.replace(/\-/g, '/')).getTime()),
+								title: news.title,
+								image_url: news.cover,
+								source: news.author_name,
+								comment_count: news.comments_count,
+								post_id: news.post_id
+							};
+						});
+						if (action === 1) {
+							activeTab.data = data;
+							this.refreshing = false;
+						} else {
+							data.forEach((news) => {
+								activeTab.data.push(news);
+							});
+						}
+						activeTab.requestParams.minId = data[data.length - 1].newsid;
+					}
+				});
+			},
+			goDetail(detail) {
+				if (this.navigateFlag) {
+					return;
+				}
+				this.navigateFlag = true;
+				uni.navigateTo({
+					url: '/pages/detail/detail?query=' + encodeURIComponent(JSON.stringify(detail))
+				});
+				setTimeout(() => {
+					this.navigateFlag = false;
+				}, 200)
+			},
+			dislike(tabIndex, newsIndex) {
+				uni.showModal({
+					content: '不感兴趣？',
+					success: (res) => {
+						if (res.confirm) {
+							this.newsList[tabIndex].data.splice(newsIndex, 1);
+						}
+					}
+				})
+			},
+			loadMore(e) {
+				this.getList(this.tabIndex, 2);
+			},
+			ontabtap(e) {
+				let index = e.target.dataset.current || e.currentTarget.dataset.current;
+				this.switchTab(index);
+			},
+			ontabchange(e) {
+				let index = e.target.current || e.detail.current;
+				this.switchTab(index);
+			},
+			switchTab(index) {
+				if (this.newsList[index].data.length === 0) {
+					this.getList(index);
+				}
+
+				if (this.tabIndex === index) {
+					return;
+				}
+
+				// 缓存 tabId
+				if (this.newsList[this.tabIndex].data.length > MAX_CACHE_DATA) {
+					let isExist = this.cacheTab.indexOf(this.tabIndex);
+					if (isExist < 0) {
+						this.cacheTab.push(this.tabIndex);
+						//console.log("cache index:: " + this.tabIndex);
+					}
+				}
+
+				this.tabIndex = index;
+				this.scrollInto = this.tabBars[index].id;
+
+				// 释放 tabId
+				if (this.cacheTab.length > MAX_CACHE_PAGE) {
+					let cacheIndex = this.cacheTab[0];
+					this.clearTabData(cacheIndex);
+					this.cacheTab.splice(0, 1);
+					//console.log("remove cache index:: " + cacheIndex);
+				}
+			},
+			clearTabData(e) {
+				this.newsList[e].data.length = 0;
+				this.newsList[e].loadingText = "加载更多...";
+			},
+			refreshData() {},
+			onrefresh(e) {
+				var tab = this.newsList[this.tabIndex];
+				if (!tab.refreshFlag) {
+					return;
+				}
+				tab.refreshing = true;
+				tab.refreshText = "正在刷新...";
+
+				setTimeout(() => {
+					this.refreshData();
+					this.pulling = true;
+					tab.refreshing = false;
+					tab.refreshText = "已刷新";
+					setTimeout(() => { // TODO fix ios和Android 动画时间相反问题
+						this.pulling = false;
+					}, 500);
+				}, 2000);
+			},
+			onpullingdown(e) {
+				var tab = this.newsList[this.tabIndex];
+				if (tab.refreshing || this.pulling) {
+					return;
+				}
+				if (Math.abs(e.pullingDistance) > Math.abs(e.viewHeight)) {
+					tab.refreshFlag = true;
+					tab.refreshText = "释放立即刷新";
+				} else {
+					tab.refreshFlag = false;
+					tab.refreshText = "下拉可以刷新";
+				}
+			},
+			newGuid() {
+				let s4 = function() {
+					return (65536 * (1 + Math.random()) | 0).toString(16).substring(1);
+				}
+				return (s4() + s4() + "-" + s4() + "-4" + s4().substr(0, 3) + "-" + s4() + "-" + s4() + s4() + s4()).toUpperCase();
+			},
+
+			toolClick() {
+				this.toolvisible = !this.toolvisible;
+			}
+		}
+	}
+</script>
+
+<style lang="scss">
+	/* #ifndef APP-PLUS */
+	/* page {
+		width: 100%;
+		min-height: 100%; 
+		display: flex;
+	} */
+
+	/* #endif */
+
+	.base-view {
+		width: 750rpx;
+		height: 1333rpx;
+		overflow: hidden;
+		font-size: $uni-font-size-base;
+	}
+
+	.map-view {
+		width: 750rpx;
+		height: 1333rpx;
+	}
+
+	.search-input {
+		padding-left: 20rpx;
+		margin-right: 0rpx;
+		margin-left: 29rpx;
+		margin-top: 29rpx;
+		width: 604rpx;
+		height: 70rpx;
+		background-color: #FFFFFF;
+		border-color: #EBEBEB;
+		border-width: 1px;
+
+	}
+
+	.tool-extend-view {
+		margin-left: 10rpx;
+	}
+
+	.tool-extend-border{
+		width: 144rpx;
+		height: 104rpx;
+		border: solid;
+		border-color: #EBEBEB;
+		border-width: 1px;
+		border-radius: 8rpx;
+		box-shadow: aqua;
+		margin-top: 20rpx;
+		margin-left: 0rpx;
+		background-color: #FFFFFF;
+		text-align: center;
+	}
+
+	.seach-btn {
+		margin-top: 29rpx;
+		margin-left: 0rpx;
+		width: 104rpx;
+		height: 68rpx;
+		line-height: 70rpx;
+		font-size: $uni-font-size-lg;
+	}
+
+	.flex-direction-row {
+		flex-direction: row;
+	}
+
+	.flex-direction-colum {
+		flex-direction: column;
+	}
+
+	.right-tool-view {
+		position: absolute;
+		left: 633rpx;
+		top: 20rpx;
+		margin-top: -20rpx;
+		margin-left: -29rpx;
+	}
+
+	.tool-img {
+		width: $uni-img-size-sm;
+		height: $uni-img-size-sm;
+		margin-top: 12rpx;
+		margin-left: 30rpx;
+	}
+	
+	.tool-extend-img{
+		width: $uni-img-size-sm;
+		height: $uni-img-size-sm;
+		margin-top: 12rpx;
+		margin-left: 50rpx;
+	}
+
+	.tool-text {
+		margin-top: 6rpx;
+	}
+
+	.tool-border-view {
+		width: 104rpx;
+		height: 104rpx;
+		border: solid;
+		border-color: #EBEBEB;
+		border-width: 1px;
+		border-radius: 15rpx;
+		box-shadow: aqua;
+		margin-top: 20rpx;
+		margin-left: 29rpx;
+		background-color: #FFFFFF;
+		text-align: center;
+	}
+</style>
